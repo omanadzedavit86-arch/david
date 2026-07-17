@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>THE HOLLOW WOOD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink: #07080b;
+    --slate: #141821;
+    --mid: #232837;
+    --crimson: #b3123f;
+    --crimson-glow: rgba(179,18,63,0.55);
+    --gold: #ffd76a;
+    --amber: #ffdca8;
+    --text: #ede7e0;
+    --dim: #6b7180;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none;}
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background: var(--ink);
+    overflow:hidden; touch-action:none;
+    font-family:'Space Mono', monospace;
+    color: var(--text);
+  }
+  #wrap{ position:fixed; inset:0; }
+  canvas{ display:block; touch-action:none; }
+
+  #hud{
+    position:fixed; top:0; left:0; right:0;
+    display:flex; justify-content:space-between; align-items:flex-start;
+    padding: max(14px, env(safe-area-inset-top)) 16px 0 16px;
+    pointer-events:none; z-index:5;
+  }
+  #keyIcon{
+    font-family:'Press Start 2P', monospace;
+    font-size:10px;
+    color: var(--dim);
+    display:flex; align-items:center; gap:8px;
+    background: rgba(7,8,11,0.5);
+    padding:8px 10px;
+    border: 1px solid rgba(255,215,106,0.15);
+    border-radius:3px;
+    transition: color .3s, border-color .3s;
+  }
+  #keyIcon.got{ color: var(--gold); border-color: rgba(255,215,106,0.55); text-shadow: 0 0 10px rgba(255,215,106,0.6); }
+  #keyGlyph{ font-size:13px; }
+
+  #controls{
+    position:fixed; left:0; right:0; bottom:0;
+    display:flex; justify-content:space-between; align-items:flex-end;
+    padding: 0 18px max(18px, env(safe-area-inset-bottom)) 18px;
+    z-index:6;
+  }
+  .dbtn{
+    width:64px; height:64px;
+    border-radius:50%;
+    background: rgba(35,40,55,0.55);
+    border: 1px solid rgba(237,231,224,0.18);
+    display:flex; align-items:center; justify-content:center;
+    font-size:22px; color: var(--text);
+    backdrop-filter: blur(2px);
+  }
+  .dbtn.active{ background: rgba(179,18,63,0.4); border-color: rgba(255,215,106,0.5); }
+  #dpad{ display:flex; gap:14px; }
+  #actionBtn{
+    width:78px; height:78px;
+    font-family:'Press Start 2P', monospace;
+    font-size:9px;
+  }
+
+  #overlay{
+    position:fixed; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:20px; text-align:center; padding:0 32px;
+    background: rgba(7,8,11,0.92);
+    z-index:10; transition: opacity .3s ease;
+  }
+  #overlay.hidden{ opacity:0; pointer-events:none; }
+  .title{
+    font-family:'Press Start 2P', monospace;
+    font-size:19px; line-height:1.7;
+    text-shadow: 0 0 16px rgba(179,18,63,0.6);
+  }
+  .title span{ color: var(--crimson); }
+  .sub{ font-size:12.5px; color: var(--dim); max-width:280px; line-height:1.8; }
+  .cta{
+    font-family:'Press Start 2P', monospace;
+    font-size:11px; color: var(--ink);
+    background: var(--gold);
+    padding:14px 22px; border-radius:2px;
+    box-shadow: 0 0 20px rgba(255,215,106,0.4);
+  }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div id="keyIcon"><span id="keyGlyph">🔑</span><span id="keyText">გასაღები</span></div>
+</div>
+
+<div id="wrap"><canvas id="game"></canvas></div>
+
+<div id="controls">
+  <div id="dpad">
+    <div class="dbtn" id="leftBtn">◀</div>
+    <div class="dbtn" id="rightBtn">▶</div>
+  </div>
+  <div class="dbtn" id="actionBtn">JUMP</div>
+</div>
+
+<div id="overlay">
+  <div class="title">THE HOLLOW<br><span>WOOD</span></div>
+  <div class="sub">◀▶ სიარულისთვის.<br>ღილაკი — ხტომა. ხესთან ახლოს დაჭერით — აძვრები.<br>მოერიდე ეკლებს, მოიპოვე გასაღები, გახსენი კარი.</div>
+  <div class="cta" id="startBtn">TAP TO BEGIN</div>
+</div>
+
+<script>
+(function(){
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const overlay = document.getElementById('overlay');
+  const startBtn = document.getElementById('startBtn');
+  const leftBtn = document.getElementById('leftBtn');
+  const rightBtn = document.getElementById('rightBtn');
+  const actionBtn = document.getElementById('actionBtn');
+  const keyIcon = document.getElementById('keyIcon');
+  const keyText = document.getElementById('keyText');
+
+  let W,H,DPR;
+  function resize(){
+    W = window.innerWidth; H = window.innerHeight; DPR = window.devicePixelRatio||1;
+    canvas.width = W*DPR; canvas.height = H*DPR;
+    canvas.style.width=W+'px'; canvas.style.height=H+'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    groundY = H - 96;
+  }
+  let groundY;
+  window.addEventListener('resize', resize);
+
+  // ---- input ----
+  const input = { left:false, right:false, action:false };
+  function bind(el, key){
+    el.addEventListener('pointerdown', e=>{ e.preventDefault(); input[key]=true; el.classList.add('active'); });
+    ['pointerup','pointerleave','pointercancel'].forEach(ev=>el.addEventListener(ev, ()=>{ input[key]=false; el.classList.remove('active'); }));
+  }
+  bind(leftBtn,'left'); bind(rightBtn,'right'); bind(actionBtn,'action');
+
+  // ---- level (world space) ----
+  const LEVEL_W = 2600;
+  let thorns, tree, door, goalX, fog, bgTrees;
+
+  function buildLevel(){
+    thorns = { x1: 520, x2: 690 };
+    tree = { x: 1080, w: 54, topOffset: 300, keyTaken:false };
+    door = { x: 1820, w: 50, open:false };
+    goalX = 2260;
+    fog = [];
+    for(let i=0;i<26;i++){
+      fog.push({ x: Math.random()*LEVEL_W, y: Math.random()*0.6+0.15, r: 60+Math.random()*90, s: 6+Math.random()*10, ph: Math.random()*100 });
+    }
+    bgTrees = [];
+    for(let i=0;i<34;i++){
+      bgTrees.push({ x: Math.random()*LEVEL_W, h: 90+Math.random()*160, w: 18+Math.random()*22, layer: Math.random()<0.5?0:1 });
+    }
+  }
+
+  // ---- player ----
+  let player, cam, hasKey, dead, won, elapsed;
+  function resetPlayer(atCheckpoint){
+    player = {
+      x: atCheckpoint || 60, y: 0, vx:0, vy:0,
+      w: 22, h: 46, onGround:false, facing:1,
+      climbing:false, walkT:0
+    };
+  }
+
+  let checkpoint = 60;
+  let running = false;
+
+  function startGame(){
+    buildLevel();
+    resetPlayer(60);
+    hasKey = false;
+    dead = false; won = false; elapsed = 0;
+    cam = { x:0 };
+    keyIcon.classList.remove('got');
+    keyText.textContent = 'გასაღები';
+    running = true;
+    overlay.classList.add('hidden');
+  }
+  startBtn.addEventListener('click', startGame);
+
+  function respawn(){
+    dead = false;
+    resetPlayer(checkpoint);
+  }
+
+  function playerBox(){
+    return { x: player.x-player.w/2, y: player.y-player.h, w: player.w, h: player.h };
+  }
+
+  // ---- update ----
+  const GRAVITY = 2200, MOVE_SPEED = 210, JUMP_V = 700, CLIMB_SPEED = 150;
+
+  function update(dt){
+    if(!running || dead || won) return;
+    elapsed += dt;
+
+    const nearTree = Math.abs(player.x - (tree.x+tree.w/2)) < tree.w*1.4 + 14;
+    const treeTopY = groundY - tree.topOffset;
+
+    if(nearTree && input.action && player.y > treeTopY+10){
+      player.climbing = true;
+    }
+    if(!nearTree || !input.action){ player.climbing = false; }
+
+    if(player.climbing){
+      player.vy = -CLIMB_SPEED;
+      player.vx = 0;
+      player.x += (tree.x+tree.w/2 - player.x)*Math.min(1,dt*8);
+      player.y += player.vy*dt;
+      player.onGround = false;
+      if(player.y < treeTopY) player.y = treeTopY;
+    } else {
+      let move = 0;
+      if(input.left){ move -= 1; player.facing=-1; }
+      if(input.right){ move += 1; player.facing=1; }
+      player.vx = move*MOVE_SPEED;
+      player.x += player.vx*dt;
+
+      if(input.action && player.onGround){
+        player.vy = -JUMP_V;
+        player.onGround = false;
+      }
+      player.vy += GRAVITY*dt;
+      player.y += player.vy*dt;
+
+      if(player.y >= groundY){
+        player.y = groundY;
+        player.vy = 0;
+        player.onGround = true;
+      }
+    }
+
+    player.x = Math.max(30, Math.min(LEVEL_W-30, player.x));
+    if(player.vx!==0 && player.onGround) player.walkT += dt*8; 
+
+    // thorns
+    if(player.onGround && player.x > thorns.x1+10 && player.x < thorns.x2-10){
+      dead = true;
+    }
+
+    // tree key
+    if(!hasKey && nearTree && player.y <= treeTopY+16){
+      hasKey = true;
+      keyIcon.classList.add('got');
+      keyText.textContent = 'გასაღები ✓';
+    }
+
+    // door
+    const doorCenter = door.x+door.w/2;
+    if(hasKey && Math.abs(player.x-doorCenter) < 60) door.open = true;
+    if(!door.open){
+      const left = door.x-6, right = door.x+door.w+6;
+      if(player.x > left-16 && player.x < right+16 && player.y > groundY-140){
+        if(player.x < doorCenter) player.x = Math.min(player.x, left);
+        else player.x = Math.max(player.x, right);
+      }
+    }
+
+    if(player.x >= goalX) won = true;
+
+    if(player.y > groundY+400) dead = true;
+
+    if(dead){
+      setTimeout(()=>{ if(dead) respawn(); }, 550);
+    }
+
+    cam.x = Math.max(0, Math.min(LEVEL_W-W, player.x - W*0.38));
+  }
+
+  // ---- drawing ----
+  function drawBackground(t){
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0, '#0a0c12');
+    g.addColorStop(1, '#05060a');
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,W,H);
+
+    // far silhouettes (parallax 0.3)
+    ctx.fillStyle = '#12151f';
+    bgTrees.filter(b=>b.layer===0).forEach(b=>{
+      const sx = b.x - cam.x*0.35;
+      if(sx<-60||sx>W+60) return;
+      ctx.beginPath();
+      ctx.moveTo(sx, groundY);
+      ctx.lineTo(sx+b.w/2, groundY-b.h);
+      ctx.lineTo(sx+b.w, groundY);
+      ctx.closePath(); ctx.fill();
+    });
+    // near silhouettes (parallax 0.65)
+    ctx.fillStyle = '#191d29';
+    bgTrees.filter(b=>b.layer===1).forEach(b=>{
+      const sx = b.x - cam.x*0.65;
+      if(sx<-60||sx>W+60) return;
+      ctx.beginPath();
+      ctx.moveTo(sx, groundY);
+      ctx.lineTo(sx+b.w/2, groundY-b.h*1.1);
+      ctx.lineTo(sx+b.w, groundY);
+      ctx.closePath(); ctx.fill();
+    });
+
+    // drifting fog
+    fog.forEach(f=>{
+      const sx = (f.x - cam.x*0.5 + Math.sin(t*0.2+f.ph)*20);
+      const wx = ((sx % (W+300)) + (W+300)) % (W+300) - 150;
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(180,190,210,${0.03+0.02*Math.sin(t*0.3+f.ph)})`;
+      ctx.ellipse(wx, groundY*f.y, f.r, f.r*0.35, 0, 0, Math.PI*2);
+      ctx.fill();
+    });
+  }
+
+  function drawGround(){
+    ctx.fillStyle = '#0d1016';
+    ctx.fillRect(0, groundY, W, H-groundY);
+    ctx.fillStyle = '#171b24';
+    ctx.fillRect(0, groundY, W, 4);
+  }
+
+  function drawThorns(){
+    const x1 = thorns.x1-cam.x, x2 = thorns.x2-cam.x;
+    if(x2<-20||x1>W+20) return;
+    ctx.fillStyle = '#1c0e14';
+    for(let x=x1; x<x2; x+=14){
+      ctx.beginPath();
+      ctx.moveTo(x, groundY);
+      ctx.lineTo(x+7, groundY-26);
+      ctx.lineTo(x+14, groundY);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#8a1f3a';
+      ctx.beginPath();
+      ctx.arc(x+7, groundY-26, 2, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = '#1c0e14';
+    }
+  }
+
+  function drawTree(){
+    const sx = tree.x - cam.x;
+    if(sx<-100||sx>W+100) return;
+    const topY = groundY - tree.topOffset;
+    ctx.fillStyle = '#231710';
+    ctx.fillRect(sx, topY, tree.w, groundY-topY);
+    ctx.fillStyle = '#2c1e15';
+    for(let i=0;i<5;i++){
+      ctx.fillRect(sx-4, topY+i*40+10, tree.w+8, 5);
+    }
+    // canopy
+    ctx.fillStyle = '#141c14';
+    ctx.beginPath();
+    ctx.ellipse(sx+tree.w/2, topY-10, 70, 46, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    if(!hasKey){
+      const bob = Math.sin(performance.now()/300)*4;
+      ctx.save();
+      ctx.shadowColor = 'rgba(255,215,106,0.9)';
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = '#ffd76a';
+      ctx.beginPath();
+      ctx.arc(sx+tree.w/2, topY-30+bob, 6, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillRect(sx+tree.w/2+4, topY-32+bob, 10, 3);
+      ctx.restore();
+    }
+  }
+
+  function drawDoor(){
+    const sx = door.x-cam.x;
+    if(sx<-80||sx>W+80) return;
+    const h = 140;
+    const openAmt = door.open ? Math.min(1,(elapsed%99)+1) : 0;
+    ctx.save();
+    ctx.translate(sx, groundY);
+    ctx.fillStyle = '#4a3226';
+    ctx.fillRect(-4,-h-6, door.w+8, h+6);
+    ctx.fillStyle = door.open ? 'rgba(20,10,8,0.9)' : '#5b3a29';
+    ctx.fillRect(0, -h, door.w * (door.open?0.15:1), h);
+    ctx.strokeStyle = 'rgba(138,151,168,0.5)';
+    ctx.lineWidth=2;
+    ctx.strokeRect(0,-h,door.w*(door.open?0.15:1),h);
+    if(!door.open){
+      ctx.fillStyle = hasKey ? '#ffd76a' : '#3a4150';
+      ctx.beginPath();
+      ctx.arc(door.w-12, -h/2, 3.5, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawGoal(){
+    const sx = goalX-cam.x;
+    if(sx<-40||sx>W+40) return;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,215,106,0.4)';
+    ctx.lineWidth=3;
+    ctx.beginPath();
+    ctx.moveTo(sx, groundY);
+    ctx.lineTo(sx, groundY-120);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,215,106,0.25)';
+    ctx.beginPath();
+    ctx.moveTo(sx, groundY-120);
+    ctx.lineTo(sx+34, groundY-105);
+    ctx.lineTo(sx, groundY-90);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawPlayer(t){
+    const sx = player.x - cam.x;
+    const sy = player.y;
+    const walk = player.onGround && Math.abs(player.vx)>5 ? Math.sin(player.walkT)*14 : 0;
+    const climbBob = player.climbing ? Math.sin(t*10)*4 : 0;
+
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(player.facing, 1);
+
+    // legs
+    ctx.strokeStyle = '#c8a888';
+    ctx.lineWidth = 4; ctx.lineCap='round';
+    ctx.beginPath();
+    ctx.moveTo(-4,-20); ctx.lineTo(-4+walk*0.5, -2);
+    ctx.moveTo(4,-20); ctx.lineTo(4-walk*0.5, -2);
+    ctx.stroke();
+
+    // dress
+    ctx.fillStyle = '#b3123f';
+    ctx.beginPath();
+    ctx.moveTo(-13,-20);
+    ctx.lineTo(13,-20);
+    ctx.lineTo(9,-40);
+    ctx.lineTo(-9,-40);
+    ctx.closePath(); ctx.fill();
+
+    // arms
+    ctx.strokeStyle = '#c8a888';
+    ctx.beginPath();
+    if(player.climbing){
+      ctx.moveTo(-9,-36); ctx.lineTo(-14, -46+climbBob);
+      ctx.moveTo(9,-36); ctx.lineTo(14, -46-climbBob);
+    } else {
+      ctx.moveTo(-9,-36); ctx.lineTo(-13+walk*0.3, -24);
+      ctx.moveTo(9,-36); ctx.lineTo(13-walk*0.3, -24);
+    }
+    ctx.stroke();
+
+    // head
+    ctx.fillStyle = '#e8c4a0';
+    ctx.beginPath();
+    ctx.arc(0,-46,9,0,Math.PI*2);
+    ctx.fill();
+
+    // curly hair
+    ctx.fillStyle = '#20140d';
+    const curls = [[-8,-52],[8,-52],[-10,-45],[10,-45],[0,-56],[-5,-58],[5,-58]];
+    curls.forEach(([cx,cy])=>{
+      ctx.beginPath();
+      ctx.arc(cx, cy+Math.sin(t*4+cx)*0.6, 4.2, 0, Math.PI*2);
+      ctx.fill();
+    });
+
+    ctx.restore();
+  }
+
+  function drawLight(t){
+    const off = document.createElement('canvas');
+    // performance: reuse persistent canvas
+  }
+  let lightCanvas = document.createElement('canvas');
+  let lightCtx = lightCanvas.getContext('2d');
+
+  function drawDarkness(t){
+    if(lightCanvas.width!==canvas.width){ lightCanvas.width=canvas.width; lightCanvas.height=canvas.height; }
+    lightCtx.setTransform(DPR,0,0,DPR,0,0);
+    lightCtx.clearRect(0,0,W,H);
+    lightCtx.fillStyle = '#000';
+    lightCtx.fillRect(0,0,W,H);
+
+    const flicker = 0.86 + Math.sin(t*7)*0.03 + (Math.random()<0.02? -0.25:0);
+    const radius = (170 + Math.sin(t*1.7)*14) * flicker;
+    const px = player.x-cam.x, py = player.y-24;
+
+    lightCtx.globalCompositeOperation = 'destination-out';
+    const grad = lightCtx.createRadialGradient(px,py,0, px,py,radius);
+    grad.addColorStop(0,'rgba(255,255,255,0.95)');
+    grad.addColorStop(0.55,'rgba(255,255,255,0.55)');
+    grad.addColorStop(1,'rgba(255,255,255,0)');
+    lightCtx.fillStyle = grad;
+    lightCtx.beginPath();
+    lightCtx.arc(px,py,radius,0,Math.PI*2);
+    lightCtx.fill();
+    lightCtx.globalCompositeOperation = 'source-over';
+
+    ctx.save();
+    ctx.globalAlpha = 0.8;
+    ctx.drawImage(lightCanvas,0,0,W,H);
+    ctx.restore();
+  }
+
+  let last = performance.now();
+  function loop(now){
+    const dt = Math.min(0.033,(now-last)/1000);
+    last = now;
+    const t = now/1000;
+
+    update(dt);
+
+    ctx.clearRect(0,0,W,H);
+    drawBackground(t);
+    drawGround();
+    drawThorns();
+    drawTree();
+    drawDoor();
+    drawGoal();
+    drawPlayer(t);
+    drawDarkness(t);
+
+    if(running && dead){
+      ctx.save();
+      ctx.fillStyle='rgba(179,18,63,0.18)';
+      ctx.fillRect(0,0,W,H);
+      ctx.restore();
+    }
+    if(running && won && overlay.classList.contains('hidden')){
+      showWin();
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  function showWin(){
+    document.querySelector('.title').innerHTML = 'LEVEL<br><span>COMPLETE</span>';
+    document.querySelector('.sub').innerHTML = 'გოგონამ იპოვა გზა კარიდან.<br>შემდეგი დონე მალე დაემატება.';
+    startBtn.textContent = 'PLAY AGAIN';
+    overlay.classList.remove('hidden');
+  }
+
+  resize();
+  buildLevel();
+  resetPlayer(60);
+  cam = { x:0 };
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
