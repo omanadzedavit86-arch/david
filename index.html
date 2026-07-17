@@ -727,7 +727,7 @@
     lightCtx.fillRect(0,0,W,H);
 
     const flicker = 0.86 + Math.sin(t*7)*0.03 + (Math.random()<0.02? -0.25:0);
-    const radius = (140 + Math.sin(t*1.7)*12) * flicker;
+    const radius = (190 + Math.sin(t*1.7)*16) * flicker;
     const px = player.x-cam.x, py = player.y-24;
 
     lightCtx.globalCompositeOperation = 'destination-out';
@@ -742,7 +742,7 @@
     lightCtx.globalCompositeOperation = 'source-over';
 
     ctx.save();
-    ctx.globalAlpha = 0.95;
+    ctx.globalAlpha = 0.75;
     ctx.drawImage(lightCanvas,0,0,W,H);
     ctx.restore();
   }
