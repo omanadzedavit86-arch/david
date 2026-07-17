@@ -204,11 +204,11 @@
     // 5 depth layers with parallax: 0.15, 0.3, 0.45, 0.65, 0.85
     bgLayers = [];
     const layerConfigs = [
-      { parallax: 0.15, color: '#1a1d26', blur: 4, treeCount: 12, treeHeight: 60, treeWidth: 12 },
-      { parallax: 0.3, color: '#15181f', blur: 2, treeCount: 15, treeHeight: 80, treeWidth: 16 },
-      { parallax: 0.45, color: '#12151c', blur: 1, treeCount: 18, treeHeight: 100, treeWidth: 18 },
-      { parallax: 0.65, color: '#0f1118', blur: 0, treeCount: 20, treeHeight: 130, treeWidth: 22 },
-      { parallax: 0.85, color: '#0c0e14', blur: 0, treeCount: 8, treeHeight: 160, treeWidth: 28 }
+      { parallax: 0.15, color: '#0a0c10', blur: 4, treeCount: 6, treeHeight: 80, treeWidth: 40 },
+      { parallax: 0.3, color: '#080a0e', blur: 2, treeCount: 5, treeHeight: 100, treeWidth: 50 },
+      { parallax: 0.45, color: '#06080c', blur: 1, treeCount: 4, treeHeight: 120, treeWidth: 60 },
+      { parallax: 0.65, color: '#04060a', blur: 0, treeCount: 3, treeHeight: 150, treeWidth: 70 },
+      { parallax: 0.85, color: '#020406', blur: 0, treeCount: 2, treeHeight: 180, treeWidth: 80 }
     ];
     
     layerConfigs.forEach((config, layerIndex) => {
@@ -244,14 +244,14 @@
       });
     }
     
-    // volumetric light rays
+    // volumetric light rays - fewer but more prominent
     lightRays = [];
-    for(let i=0;i<2;i++){
+    for(let i=0;i<1;i++){
       lightRays.push({
-        x: 600 + i*800,
-        width: 80 + Math.random()*60,
+        x: 800 + i*1000,
+        width: 120 + Math.random()*40,
         flickerPhase: Math.random()*Math.PI*2,
-        flickerSpeed: 2 + Math.random()*2
+        flickerSpeed: 1.5 + Math.random()*1
       });
     }
     
@@ -400,32 +400,14 @@
     layer.trees.forEach(tree => {
       const tx = tree.x + 100;
       const ty = groundY;
-      const sway = Math.sin(tree.swayPhase) * 8;
       
+      // broad silhouette masses - simple triangles
       cacheCtx.beginPath();
       cacheCtx.moveTo(tx, ty);
-      
-      // organic trunk with bezier curve
-      const trunkCurve = tree.trunkCurve * tree.h;
-      cacheCtx.quadraticCurveTo(tx + trunkCurve, ty - tree.h * 0.6, tx + sway, ty - tree.h);
-      cacheCtx.lineTo(tx + tree.w + sway, ty - tree.h);
-      cacheCtx.quadraticCurveTo(tx + tree.w + trunkCurve, ty - tree.h * 0.6, tx + tree.w, ty);
+      cacheCtx.lineTo(tx + tree.w/2, ty - tree.h);
+      cacheCtx.lineTo(tx + tree.w, ty);
       cacheCtx.closePath();
       cacheCtx.fill();
-      
-      // branches
-      for(let b=0;b<tree.branches;b++){
-        const by = ty - tree.h * (0.3 + b * 0.25);
-        const bx = tx + tree.w/2 + sway;
-        const bl = 15 + Math.random() * 10;
-        const ba = (Math.random() - 0.5) * 0.8;
-        cacheCtx.beginPath();
-        cacheCtx.moveTo(bx, by);
-        cacheCtx.lineTo(bx + Math.cos(ba) * bl, by - Math.sin(ba) * bl * 0.7);
-        cacheCtx.lineWidth = 2;
-        cacheCtx.strokeStyle = layer.color;
-        cacheCtx.stroke();
-      }
     });
     
     cacheCtx.filter = 'none';
@@ -454,7 +436,7 @@
       ctx.restore();
     });
     
-    // draw living silhouette figures
+    // draw living silhouette figures - almost pure black
     figures.forEach(fig => {
       const layer = bgLayers[fig.layer];
       const sx = fig.x - cam.x * layer.parallax;
@@ -467,7 +449,7 @@
       ctx.translate(sx, groundY);
       ctx.scale(1, breatheScale);
       
-      ctx.fillStyle = layer.color;
+      ctx.fillStyle = '#020304';
       // body
       ctx.beginPath();
       ctx.ellipse(0, -40, 12, 25, 0, 0, Math.PI*2);
@@ -619,16 +601,19 @@
     ctx.translate(sx, sy);
     ctx.scale(player.facing, 1);
 
+    // silhouette base - dark
+    const silhouetteColor = '#1a1a1e';
+    
     // legs
-    ctx.strokeStyle = '#c8a888';
+    ctx.strokeStyle = silhouetteColor;
     ctx.lineWidth = 4; ctx.lineCap='round';
     ctx.beginPath();
     ctx.moveTo(-4,-20); ctx.lineTo(-4+walk*0.5, -2);
     ctx.moveTo(4,-20); ctx.lineTo(4-walk*0.5, -2);
     ctx.stroke();
 
-    // dress
-    ctx.fillStyle = '#b3123f';
+    // dress - dark silhouette with subtle crimson hint
+    ctx.fillStyle = '#2a1a25';
     ctx.beginPath();
     ctx.moveTo(-13,-20);
     ctx.lineTo(13,-20);
@@ -637,7 +622,7 @@
     ctx.closePath(); ctx.fill();
 
     // arms
-    ctx.strokeStyle = '#c8a888';
+    ctx.strokeStyle = silhouetteColor;
     ctx.beginPath();
     if(player.climbing){
       ctx.moveTo(-9,-36); ctx.lineTo(-14, -46+climbBob);
@@ -648,14 +633,14 @@
     }
     ctx.stroke();
 
-    // head
-    ctx.fillStyle = '#e8c4a0';
+    // head - dark silhouette
+    ctx.fillStyle = silhouetteColor;
     ctx.beginPath();
     ctx.arc(0,-46,9,0,Math.PI*2);
     ctx.fill();
 
-    // curly hair
-    ctx.fillStyle = '#20140d';
+    // curly hair - dark
+    ctx.fillStyle = '#0f0f12';
     const curls = [[-8,-52],[8,-52],[-10,-45],[10,-45],[0,-56],[-5,-58],[5,-58]];
     curls.forEach(([cx,cy])=>{
       ctx.beginPath();
@@ -681,13 +666,13 @@
     lightCtx.fillRect(0,0,W,H);
 
     const flicker = 0.86 + Math.sin(t*7)*0.03 + (Math.random()<0.02? -0.25:0);
-    const radius = (170 + Math.sin(t*1.7)*14) * flicker;
+    const radius = (140 + Math.sin(t*1.7)*12) * flicker;
     const px = player.x-cam.x, py = player.y-24;
 
     lightCtx.globalCompositeOperation = 'destination-out';
     const grad = lightCtx.createRadialGradient(px,py,0, px,py,radius);
-    grad.addColorStop(0,'rgba(255,255,255,0.95)');
-    grad.addColorStop(0.55,'rgba(255,255,255,0.55)');
+    grad.addColorStop(0,'rgba(255,255,255,0.85)');
+    grad.addColorStop(0.4,'rgba(255,255,255,0.35)');
     grad.addColorStop(1,'rgba(255,255,255,0)');
     lightCtx.fillStyle = grad;
     lightCtx.beginPath();
@@ -696,7 +681,7 @@
     lightCtx.globalCompositeOperation = 'source-over';
 
     ctx.save();
-    ctx.globalAlpha = 0.8;
+    ctx.globalAlpha = 0.95;
     ctx.drawImage(lightCanvas,0,0,W,H);
     ctx.restore();
   }
@@ -731,17 +716,19 @@
       const sx = ray.x - cam.x * 0.5;
       if(sx<-200||sx>W+200) return;
       
-      const flicker = 0.6 + Math.sin(t * ray.flickerSpeed + ray.flickerPhase) * 0.2;
+      const flicker = 0.7 + Math.sin(t * ray.flickerSpeed + ray.flickerPhase) * 0.15;
       
       ctx.save();
       ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = 0.08 * flicker;
+      ctx.globalAlpha = 0.15 * flicker;
       
+      // sharp-edged cone of light
       const grad = ctx.createLinearGradient(sx, 0, sx + ray.width, H);
-      grad.addColorStop(0, 'rgba(200,220,255,0)');
-      grad.addColorStop(0.3, 'rgba(200,220,255,0.3)');
-      grad.addColorStop(0.7, 'rgba(200,220,255,0.2)');
-      grad.addColorStop(1, 'rgba(200,220,255,0)');
+      grad.addColorStop(0, 'rgba(180,200,220,0)');
+      grad.addColorStop(0.2, 'rgba(180,200,220,0.4)');
+      grad.addColorStop(0.5, 'rgba(180,200,220,0.5)');
+      grad.addColorStop(0.8, 'rgba(180,200,220,0.3)');
+      grad.addColorStop(1, 'rgba(180,200,220,0)');
       
       ctx.fillStyle = grad;
       ctx.fillRect(sx, 0, ray.width, H);
@@ -752,12 +739,12 @@
   function drawColorGrade(){
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';
-    ctx.globalAlpha = 0.15;
+    ctx.globalAlpha = 0.25;
     
     const g = ctx.createLinearGradient(0,0,0,H);
-    g.addColorStop(0, '#1a2a35');
-    g.addColorStop(0.5, '#152530');
-    g.addColorStop(1, '#0f1f28');
+    g.addColorStop(0, '#0f1a22');
+    g.addColorStop(0.5, '#0a141c');
+    g.addColorStop(1, '#060e14');
     ctx.fillStyle = g;
     ctx.fillRect(0,0,W,H);
     
