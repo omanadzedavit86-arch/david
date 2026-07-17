@@ -268,6 +268,37 @@
 
   // ---- player ----
   let player, cam, hasKey, dead, won, elapsed;
+  
+  // sprite loading
+  const sprites = {
+    idle: new Image(),
+    run1: new Image(),
+    run2: new Image(),
+    jump: new Image(),
+    climb: new Image()
+  };
+  let spritesLoaded = false;
+  
+  sprites.idle.src = 'assets/player/sprite_idle.png';
+  sprites.run1.src = 'assets/player/sprite_run_1.png';
+  sprites.run2.src = 'assets/player/sprite_run_2.png';
+  sprites.jump.src = 'assets/player/sprite_jump.png';
+  sprites.climb.src = 'assets/player/sprite_climb.png';
+  
+  // check if all sprites are loaded
+  function checkSpritesLoaded(){
+    if(sprites.idle.complete && sprites.run1.complete && sprites.run2.complete && 
+       sprites.jump.complete && sprites.climb.complete){
+      spritesLoaded = true;
+    }
+  }
+  
+  sprites.idle.onload = checkSpritesLoaded;
+  sprites.run1.onload = checkSpritesLoaded;
+  sprites.run2.onload = checkSpritesLoaded;
+  sprites.jump.onload = checkSpritesLoaded;
+  sprites.climb.onload = checkSpritesLoaded;
+  
   function resetPlayer(atCheckpoint){
     player = {
       x: atCheckpoint || 60, y: 0, vx:0, vy:0,
@@ -594,6 +625,36 @@
   function drawPlayer(t){
     const sx = player.x - cam.x;
     const sy = player.y;
+    
+    // use sprites if loaded, otherwise fallback to procedural
+    if(spritesLoaded){
+      let sprite;
+      if(player.climbing){
+        sprite = sprites.climb;
+      } else if(!player.onGround){
+        sprite = sprites.jump;
+      } else if(Math.abs(player.vx) > 5){
+        // walk cycle based on walkT
+        const walkFrame = Math.floor(player.walkT) % 2;
+        sprite = walkFrame === 0 ? sprites.run1 : sprites.run2;
+      } else {
+        sprite = sprites.idle;
+      }
+      
+      if(sprite && sprite.complete){
+        const scale = player.h / sprite.height;
+        const spriteWidth = sprite.width * scale;
+        
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.scale(player.facing, 1);
+        ctx.drawImage(sprite, -spriteWidth/2, -player.h, spriteWidth, player.h);
+        ctx.restore();
+        return;
+      }
+    }
+    
+    // fallback: procedural drawing
     const walk = player.onGround && Math.abs(player.vx)>5 ? Math.sin(player.walkT)*14 : 0;
     const climbBob = player.climbing ? Math.sin(t*10)*4 : 0;
 
