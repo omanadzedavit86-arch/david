@@ -187,20 +187,82 @@
 
   // ---- level (world space) ----
   const LEVEL_W = 2600;
-  let thorns, tree, door, goalX, fog, bgTrees;
+  let thorns, tree, door, goalX, fog, bgLayers, figures, lightRays, groundTexture;
 
   function buildLevel(){
     thorns = { x1: 520, x2: 690 };
     tree = { x: 1080, w: 54, topOffset: 300, keyTaken:false };
     door = { x: 1820, w: 50, open:false };
     goalX = 2260;
+    
+    // fog
     fog = [];
     for(let i=0;i<26;i++){
       fog.push({ x: Math.random()*LEVEL_W, y: Math.random()*0.6+0.15, r: 60+Math.random()*90, s: 6+Math.random()*10, ph: Math.random()*100 });
     }
-    bgTrees = [];
-    for(let i=0;i<34;i++){
-      bgTrees.push({ x: Math.random()*LEVEL_W, h: 90+Math.random()*160, w: 18+Math.random()*22, layer: Math.random()<0.5?0:1 });
+    
+    // 5 depth layers with parallax: 0.15, 0.3, 0.45, 0.65, 0.85
+    bgLayers = [];
+    const layerConfigs = [
+      { parallax: 0.15, color: '#1a1d26', blur: 4, treeCount: 12, treeHeight: 60, treeWidth: 12 },
+      { parallax: 0.3, color: '#15181f', blur: 2, treeCount: 15, treeHeight: 80, treeWidth: 16 },
+      { parallax: 0.45, color: '#12151c', blur: 1, treeCount: 18, treeHeight: 100, treeWidth: 18 },
+      { parallax: 0.65, color: '#0f1118', blur: 0, treeCount: 20, treeHeight: 130, treeWidth: 22 },
+      { parallax: 0.85, color: '#0c0e14', blur: 0, treeCount: 8, treeHeight: 160, treeWidth: 28 }
+    ];
+    
+    layerConfigs.forEach((config, layerIndex) => {
+      const trees = [];
+      for(let i=0;i<config.treeCount;i++){
+        trees.push({
+          x: Math.random()*LEVEL_W,
+          h: config.treeHeight + Math.random()*40,
+          w: config.treeWidth + Math.random()*8,
+          swayPhase: Math.random()*Math.PI*2,
+          swaySpeed: 0.3 + Math.random()*0.4,
+          trunkCurve: (Math.random()-0.5)*0.3,
+          branches: Math.floor(Math.random()*3)
+        });
+      }
+      bgLayers.push({
+        ...config,
+        trees: trees,
+        cachedCanvas: null
+      });
+    });
+    
+    // living silhouette figures
+    figures = [];
+    for(let i=0;i<3;i++){
+      figures.push({
+        x: 400 + Math.random()*1800,
+        layer: 2,
+        breathePhase: Math.random()*Math.PI*2,
+        breatheSpeed: 0.8 + Math.random()*0.5,
+        headTiltPhase: Math.random()*Math.PI*2,
+        headTiltSpeed: 0.2 + Math.random()*0.3
+      });
+    }
+    
+    // volumetric light rays
+    lightRays = [];
+    for(let i=0;i<2;i++){
+      lightRays.push({
+        x: 600 + i*800,
+        width: 80 + Math.random()*60,
+        flickerPhase: Math.random()*Math.PI*2,
+        flickerSpeed: 2 + Math.random()*2
+      });
+    }
+    
+    // ground texture
+    groundTexture = [];
+    for(let i=0;i<80;i++){
+      groundTexture.push({
+        x: Math.random()*LEVEL_W,
+        y: Math.random()*20,
+        size: 2 + Math.random()*4
+      });
     }
   }
 
@@ -320,36 +382,108 @@
   }
 
   // ---- drawing ----
+  
+  // cache layer canvases for performance
+  function cacheLayer(layerIndex){
+    const layer = bgLayers[layerIndex];
+    const cacheCanvas = document.createElement('canvas');
+    cacheCanvas.width = LEVEL_W + 200;
+    cacheCanvas.height = H;
+    const cacheCtx = cacheCanvas.getContext('2d');
+    
+    // apply blur if needed
+    if(layer.blur > 0){
+      cacheCtx.filter = `blur(${layer.blur}px)`;
+    }
+    
+    cacheCtx.fillStyle = layer.color;
+    layer.trees.forEach(tree => {
+      const tx = tree.x + 100;
+      const ty = groundY;
+      const sway = Math.sin(tree.swayPhase) * 8;
+      
+      cacheCtx.beginPath();
+      cacheCtx.moveTo(tx, ty);
+      
+      // organic trunk with bezier curve
+      const trunkCurve = tree.trunkCurve * tree.h;
+      cacheCtx.quadraticCurveTo(tx + trunkCurve, ty - tree.h * 0.6, tx + sway, ty - tree.h);
+      cacheCtx.lineTo(tx + tree.w + sway, ty - tree.h);
+      cacheCtx.quadraticCurveTo(tx + tree.w + trunkCurve, ty - tree.h * 0.6, tx + tree.w, ty);
+      cacheCtx.closePath();
+      cacheCtx.fill();
+      
+      // branches
+      for(let b=0;b<tree.branches;b++){
+        const by = ty - tree.h * (0.3 + b * 0.25);
+        const bx = tx + tree.w/2 + sway;
+        const bl = 15 + Math.random() * 10;
+        const ba = (Math.random() - 0.5) * 0.8;
+        cacheCtx.beginPath();
+        cacheCtx.moveTo(bx, by);
+        cacheCtx.lineTo(bx + Math.cos(ba) * bl, by - Math.sin(ba) * bl * 0.7);
+        cacheCtx.lineWidth = 2;
+        cacheCtx.strokeStyle = layer.color;
+        cacheCtx.stroke();
+      }
+    });
+    
+    cacheCtx.filter = 'none';
+    layer.cachedCanvas = cacheCanvas;
+  }
+  
   function drawBackground(t){
+    // sky gradient
     const g = ctx.createLinearGradient(0,0,0,H);
     g.addColorStop(0, '#0a0c12');
     g.addColorStop(1, '#05060a');
     ctx.fillStyle = g;
     ctx.fillRect(0,0,W,H);
-
-    // far silhouettes (parallax 0.3)
-    ctx.fillStyle = '#12151f';
-    bgTrees.filter(b=>b.layer===0).forEach(b=>{
-      const sx = b.x - cam.x*0.35;
-      if(sx<-60||sx>W+60) return;
-      ctx.beginPath();
-      ctx.moveTo(sx, groundY);
-      ctx.lineTo(sx+b.w/2, groundY-b.h);
-      ctx.lineTo(sx+b.w, groundY);
-      ctx.closePath(); ctx.fill();
+    
+    // draw 5 parallax layers
+    bgLayers.forEach((layer, index) => {
+      if(!layer.cachedCanvas){
+        cacheLayer(index);
+      }
+      
+      const parallaxOffset = cam.x * layer.parallax;
+      const sx = -parallaxOffset + 100;
+      
+      ctx.save();
+      ctx.drawImage(layer.cachedCanvas, sx, 0);
+      ctx.restore();
     });
-    // near silhouettes (parallax 0.65)
-    ctx.fillStyle = '#191d29';
-    bgTrees.filter(b=>b.layer===1).forEach(b=>{
-      const sx = b.x - cam.x*0.65;
-      if(sx<-60||sx>W+60) return;
+    
+    // draw living silhouette figures
+    figures.forEach(fig => {
+      const layer = bgLayers[fig.layer];
+      const sx = fig.x - cam.x * layer.parallax;
+      if(sx<-80||sx>W+80) return;
+      
+      const breatheScale = 0.98 + Math.sin(t * fig.breatheSpeed + fig.breathePhase) * 0.02;
+      const headTilt = Math.sin(t * fig.headTiltSpeed + fig.headTiltPhase) * 0.1;
+      
+      ctx.save();
+      ctx.translate(sx, groundY);
+      ctx.scale(1, breatheScale);
+      
+      ctx.fillStyle = layer.color;
+      // body
       ctx.beginPath();
-      ctx.moveTo(sx, groundY);
-      ctx.lineTo(sx+b.w/2, groundY-b.h*1.1);
-      ctx.lineTo(sx+b.w, groundY);
-      ctx.closePath(); ctx.fill();
+      ctx.ellipse(0, -40, 12, 25, 0, 0, Math.PI*2);
+      ctx.fill();
+      // head
+      ctx.save();
+      ctx.translate(0, -65);
+      ctx.rotate(headTilt);
+      ctx.beginPath();
+      ctx.arc(0, 0, 10, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+      
+      ctx.restore();
     });
-
+    
     // drifting fog
     fog.forEach(f=>{
       const sx = (f.x - cam.x*0.5 + Math.sin(t*0.2+f.ph)*20);
@@ -362,10 +496,27 @@
   }
 
   function drawGround(){
-    ctx.fillStyle = '#0d1016';
+    // ground gradient
+    const g = ctx.createLinearGradient(0, groundY, 0, H);
+    g.addColorStop(0, '#0d1016');
+    g.addColorStop(1, '#080a0f');
+    ctx.fillStyle = g;
     ctx.fillRect(0, groundY, W, H-groundY);
+    
+    // ground edge
     ctx.fillStyle = '#171b24';
     ctx.fillRect(0, groundY, W, 4);
+    
+    // procedural texture (leaves/roots)
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    groundTexture.forEach(tex => {
+      const sx = tex.x - cam.x;
+      if(sx>-20&&sx<W+20){
+        ctx.beginPath();
+        ctx.arc(sx, groundY + tex.y, tex.size, 0, Math.PI*2);
+        ctx.fill();
+      }
+    });
   }
 
   function drawThorns(){
@@ -549,6 +700,69 @@
     ctx.drawImage(lightCanvas,0,0,W,H);
     ctx.restore();
   }
+  
+  function drawForeground(t){
+    // foreground framing with blurred branches/foliage
+    ctx.save();
+    ctx.filter = 'blur(8px)';
+    ctx.fillStyle = '#050608';
+    
+    // left edge branches
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    ctx.quadraticCurveTo(80, H*0.7, 60, H*0.3);
+    ctx.quadraticCurveTo(40, H*0.1, 0, 0);
+    ctx.closePath();
+    ctx.fill();
+    
+    // right edge branches
+    ctx.beginPath();
+    ctx.moveTo(W, H);
+    ctx.quadraticCurveTo(W-80, H*0.7, W-60, H*0.3);
+    ctx.quadraticCurveTo(W-40, H*0.1, W, 0);
+    ctx.closePath();
+    ctx.fill();
+    
+    ctx.restore();
+  }
+  
+  function drawVolumetricLight(t){
+    lightRays.forEach(ray => {
+      const sx = ray.x - cam.x * 0.5;
+      if(sx<-200||sx>W+200) return;
+      
+      const flicker = 0.6 + Math.sin(t * ray.flickerSpeed + ray.flickerPhase) * 0.2;
+      
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = 0.08 * flicker;
+      
+      const grad = ctx.createLinearGradient(sx, 0, sx + ray.width, H);
+      grad.addColorStop(0, 'rgba(200,220,255,0)');
+      grad.addColorStop(0.3, 'rgba(200,220,255,0.3)');
+      grad.addColorStop(0.7, 'rgba(200,220,255,0.2)');
+      grad.addColorStop(1, 'rgba(200,220,255,0)');
+      
+      ctx.fillStyle = grad;
+      ctx.fillRect(sx, 0, ray.width, H);
+      ctx.restore();
+    });
+  }
+  
+  function drawColorGrade(){
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.globalAlpha = 0.15;
+    
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0, '#1a2a35');
+    g.addColorStop(0.5, '#152530');
+    g.addColorStop(1, '#0f1f28');
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,W,H);
+    
+    ctx.restore();
+  }
 
   let last = performance.now();
   function loop(now){
@@ -560,6 +774,7 @@
 
     ctx.clearRect(0,0,W,H);
     drawBackground(t);
+    drawVolumetricLight(t);
     drawGround();
     drawThorns();
     drawTree();
@@ -567,6 +782,8 @@
     drawGoal();
     drawPlayer(t);
     drawDarkness(t);
+    drawForeground(t);
+    drawColorGrade();
 
     if(running && dead){
       ctx.save();
